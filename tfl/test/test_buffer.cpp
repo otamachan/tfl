@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cmath>
 #include <thread>
 
 #include "tfl/transform_buffer.hpp"
@@ -40,6 +41,15 @@ TransformData make_translation(TimeNs stamp, double x, double y, double z)
   d.translation[0] = x;
   d.translation[1] = y;
   d.translation[2] = z;
+  return d;
+}
+
+// Rotation around Z axis by angle (radians)
+TransformData make_rotation_z(TimeNs stamp, double angle)
+{
+  TransformData d;
+  d.stamp_ns = stamp;
+  d.rotation = {0.0, 0.0, std::sin(angle / 2.0), std::cos(angle / 2.0)};
   return d;
 }
 
@@ -79,6 +89,39 @@ TEST(TransformBuffer, Chain)
   EXPECT_DOUBLE_EQ(result->translation[2], 0.0);
 }
 
+// source_parent_of_target path: source is ancestor of target
+// Tree: b->a, lookup("b", "a") means target=b, source=a, a is parent of b
+TEST(TransformBuffer, SourceParentOfTarget)
+{
+  TransformBuffer buf;
+  buf.set_transform("b", "a", make_translation(1000, 1.0, 2.0, 0.0));
+
+  // lookup(target="b", source="a"): a is parent of b → inverse of child transform
+  auto result = buf.lookup_transform("b", "a", 1000);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_NEAR(result->translation[0], -1.0, 1e-9);
+  EXPECT_NEAR(result->translation[1], -2.0, 1e-9);
+  EXPECT_NEAR(result->translation[2], 0.0, 1e-9);
+}
+
+// full_path: source and target share a common ancestor
+// Tree: b->a, c->a, lookup("b", "c")
+TEST(TransformBuffer, FullPath)
+{
+  TransformBuffer buf;
+  buf.set_transform("b", "a", make_translation(1000, 1.0, 0.0, 0.0));
+  buf.set_transform("c", "a", make_translation(1000, 0.0, 2.0, 0.0));
+
+  // lookup(target="b", source="c"): b and c share common parent a
+  auto result = buf.lookup_transform("b", "c", 1000);
+  ASSERT_TRUE(result.has_value());
+  // c->a is (0,2,0), a->b is inverse of b->a = (-1,0,0)
+  // c in b frame: (-1,0,0) + (0,2,0) = (-1,2,0)
+  EXPECT_NEAR(result->translation[0], -1.0, 1e-9);
+  EXPECT_NEAR(result->translation[1], 2.0, 1e-9);
+  EXPECT_NEAR(result->translation[2], 0.0, 1e-9);
+}
+
 TEST(TransformBuffer, CanTransform)
 {
   TransformBuffer buf;
@@ -102,6 +145,46 @@ TEST(TransformBuffer, Interpolation)
   EXPECT_NEAR(result->translation[0], 5.0, 1e-9);
   EXPECT_NEAR(result->translation[1], 0.0, 1e-9);
   EXPECT_NEAR(result->translation[2], 0.0, 1e-9);
+}
+
+TEST(TransformBuffer, OutOfOrderInsert)
+{
+  TransformBuffer buf;
+  // Insert in reverse order: t=3000 first, then t=1000
+  buf.set_transform("b", "a", make_translation(3000, 10.0, 0.0, 0.0));
+  buf.set_transform("b", "a", make_translation(1000, 0.0, 0.0, 0.0));
+
+  // Exact match at both timestamps
+  auto r1 = buf.lookup_transform("a", "b", 1000);
+  ASSERT_TRUE(r1.has_value());
+  EXPECT_NEAR(r1->translation[0], 0.0, 1e-9);
+
+  auto r3 = buf.lookup_transform("a", "b", 3000);
+  ASSERT_TRUE(r3.has_value());
+  EXPECT_NEAR(r3->translation[0], 10.0, 1e-9);
+
+  // Interpolation at midpoint
+  auto r2 = buf.lookup_transform("a", "b", 2000);
+  ASSERT_TRUE(r2.has_value());
+  EXPECT_NEAR(r2->translation[0], 5.0, 1e-9);
+}
+
+TEST(TransformBuffer, RotationInterpolation)
+{
+  const double pi = std::acos(-1.0);
+  TransformBuffer buf;
+  // t=1000: identity, t=3000: 90 deg around Z
+  buf.set_transform("b", "a", make_rotation_z(1000, 0.0));
+  buf.set_transform("b", "a", make_rotation_z(3000, pi / 2.0));
+
+  auto result = buf.lookup_transform("a", "b", 2000);
+  ASSERT_TRUE(result.has_value());
+  // Midpoint slerp → 45 deg around Z
+  const double expected_angle = pi / 4.0;
+  EXPECT_NEAR(result->rotation[0], 0.0, 1e-9);
+  EXPECT_NEAR(result->rotation[1], 0.0, 1e-9);
+  EXPECT_NEAR(result->rotation[2], std::sin(expected_angle / 2.0), 1e-9);
+  EXPECT_NEAR(result->rotation[3], std::cos(expected_angle / 2.0), 1e-9);
 }
 
 TEST(TransformBuffer, StaticFrame)

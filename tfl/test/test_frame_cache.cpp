@@ -91,6 +91,27 @@ TEST(FrameTransformBuffer, InterpolationBracket)
   EXPECT_EQ(d2.stamp_ns, 3000);  // newer
 }
 
+TEST(FrameTransformBuffer, OutOfOrderInsert)
+{
+  FrameTransformBuffer cache;
+  // Insert in reverse timestamp order
+  cache.insert(make_data(3000, 1), kDuration);
+  cache.insert(make_data(1000, 1), kDuration);
+
+  TransformData d1, d2;
+  // Exact match
+  EXPECT_EQ(cache.get_data(1000, d1, d2), 1);
+  EXPECT_EQ(d1.stamp_ns, 1000);
+  EXPECT_EQ(cache.get_data(3000, d1, d2), 1);
+  EXPECT_EQ(d1.stamp_ns, 3000);
+
+  // Interpolation bracket
+  uint8_t n = cache.get_data(2000, d1, d2);
+  EXPECT_EQ(n, 2);
+  EXPECT_EQ(d1.stamp_ns, 1000);
+  EXPECT_EQ(d2.stamp_ns, 3000);
+}
+
 TEST(FrameTransformBuffer, OutOfRangeReturnsZero)
 {
   FrameTransformBuffer cache;

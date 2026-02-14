@@ -281,6 +281,7 @@ std::optional<TransformData> TransformBuffer::walk_to_top_parent(
   }
   accum.time = time;
 
+  // Phase 1: walk source chain up to root
   FrameID frame = source_id;
   FrameID top_parent = INVALID_FRAME;
   uint32_t depth = 0;
@@ -290,13 +291,15 @@ std::optional<TransformData> TransformBuffer::walk_to_top_parent(
       return std::nullopt;
     }
 
-    TransformData st;
-    if (!get_frame_data(frames_[frame], time, st)) {
-      return std::nullopt;
-    }
-
     if (frame == target_id) {
       return accum.finalize_target_parent_of_source();
+    }
+
+    TransformData st;
+    if (!get_frame_data(frames_[frame], time, st)) {
+      // Reached root (no data in this frame) — stop source walk
+      top_parent = frame;
+      break;
     }
 
     accum.accum_source(st);
@@ -313,6 +316,7 @@ std::optional<TransformData> TransformBuffer::walk_to_top_parent(
     return std::nullopt;
   }
 
+  // Phase 2: walk target chain up to find meeting point
   frame = target_id;
   depth = 0;
 
@@ -321,13 +325,13 @@ std::optional<TransformData> TransformBuffer::walk_to_top_parent(
       return std::nullopt;
     }
 
+    if (frame == source_id) {
+      return accum.finalize_source_parent_of_target();
+    }
+
     TransformData st;
     if (!get_frame_data(frames_[frame], time, st)) {
       return std::nullopt;
-    }
-
-    if (frame == source_id) {
-      return accum.finalize_source_parent_of_target();
     }
 
     accum.accum_target(st);
