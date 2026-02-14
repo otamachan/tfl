@@ -14,8 +14,10 @@
 
 #include "tfl/transform_buffer.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <limits>
+#include <thread>
 
 namespace tfl
 {
@@ -364,6 +366,45 @@ bool TransformBuffer::can_transform(
     return false;
   }
   return walk_to_top_parent(t, s, time).has_value();
+}
+
+std::optional<TransformData> TransformBuffer::lookup_transform(
+  const std::string & target, const std::string & source, TimeNs time,
+  std::chrono::nanoseconds timeout) const
+{
+  auto result = lookup_transform(target, source, time);
+  if (result.has_value() || timeout.count() <= 0) {
+    return result;
+  }
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    result = lookup_transform(target, source, time);
+    if (result.has_value()) {
+      return result;
+    }
+  }
+  return std::nullopt;
+}
+
+bool TransformBuffer::can_transform(
+  const std::string & target, const std::string & source, TimeNs time,
+  std::chrono::nanoseconds timeout) const
+{
+  if (can_transform(target, source, time)) {
+    return true;
+  }
+  if (timeout.count() <= 0) {
+    return false;
+  }
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (can_transform(target, source, time)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 TimeNs TransformBuffer::get_latest_common_time(FrameID target_id, FrameID source_id) const

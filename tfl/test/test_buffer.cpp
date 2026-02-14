@@ -14,6 +14,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <thread>
+
 #include "tfl/transform_buffer.hpp"
 
 using tfl::TimeNs;
@@ -150,4 +153,50 @@ TEST(TransformBuffer, ClearResetsData)
   auto result = buf.lookup_transform("a", "b", 5000);
   ASSERT_TRUE(result.has_value());
   EXPECT_DOUBLE_EQ(result->translation[0], 4.0);
+}
+
+TEST(TransformBuffer, LookupWithTimeoutSucceeds)
+{
+  TransformBuffer buf;
+  buf.set_transform("b", "a", make_translation(1000, 1.0, 0.0, 0.0));
+
+  auto result = buf.lookup_transform("a", "b", 1000, std::chrono::milliseconds(500));
+  ASSERT_TRUE(result.has_value());
+  EXPECT_DOUBLE_EQ(result->translation[0], 1.0);
+}
+
+TEST(TransformBuffer, LookupWithTimeoutTimesOut)
+{
+  TransformBuffer buf;
+
+  auto start = std::chrono::steady_clock::now();
+  auto result = buf.lookup_transform("a", "b", 1000, std::chrono::milliseconds(50));
+  auto elapsed = std::chrono::steady_clock::now() - start;
+
+  EXPECT_FALSE(result.has_value());
+  EXPECT_GE(elapsed, std::chrono::milliseconds(40));
+}
+
+TEST(TransformBuffer, CanTransformWithTimeout)
+{
+  TransformBuffer buf;
+  buf.set_transform("b", "a", make_translation(1000, 1.0, 0.0, 0.0));
+
+  EXPECT_TRUE(buf.can_transform("a", "b", 1000, std::chrono::milliseconds(500)));
+}
+
+TEST(TransformBuffer, LookupWithTimeoutDelayedInsert)
+{
+  TransformBuffer buf;
+
+  std::thread writer([&buf]() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    buf.set_transform("b", "a", make_translation(1000, 3.0, 0.0, 0.0));
+  });
+
+  auto result = buf.lookup_transform("a", "b", 1000, std::chrono::milliseconds(500));
+  writer.join();
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_DOUBLE_EQ(result->translation[0], 3.0);
 }

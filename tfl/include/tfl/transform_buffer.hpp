@@ -14,6 +14,7 @@
 
 #pragma once
 #include <atomic>
+#include <chrono>
 #include <optional>
 #include <string>
 #include <vector>
@@ -43,6 +44,14 @@ public:
   std::optional<TransformData> lookup_transform(
     const std::string & target, const std::string & source, TimeNs time) const;
   bool can_transform(const std::string & target, const std::string & source, TimeNs time) const;
+
+  // Timeout variants: poll every 10ms until success or deadline
+  std::optional<TransformData> lookup_transform(
+    const std::string & target, const std::string & source, TimeNs time,
+    std::chrono::nanoseconds timeout) const;
+  bool can_transform(
+    const std::string & target, const std::string & source, TimeNs time,
+    std::chrono::nanoseconds timeout) const;
 
   uint32_t frame_count() const { return next_id_.load(std::memory_order_relaxed) - 1; }
 
