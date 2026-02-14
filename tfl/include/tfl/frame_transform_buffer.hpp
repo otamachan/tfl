@@ -196,6 +196,19 @@ public:
 
   bool is_static() const { return is_static_; }
 
+  // Reset all cached data. Single-writer only.
+  void clear()
+  {
+    seq_.fetch_add(1, std::memory_order_release);
+    std::atomic_thread_fence(std::memory_order_release);
+
+    size_.store(0, std::memory_order_relaxed);
+    head_.store(0, std::memory_order_relaxed);
+
+    std::atomic_thread_fence(std::memory_order_release);
+    seq_.fetch_add(1, std::memory_order_release);
+  }
+
 private:
   static constexpr int kMaxSeqRetries = 64;
   // Logical index i (0=newest) to physical buffer index

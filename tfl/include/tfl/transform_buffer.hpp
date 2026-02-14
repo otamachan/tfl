@@ -46,6 +46,9 @@ public:
 
   uint32_t frame_count() const { return next_id_.load(std::memory_order_relaxed) - 1; }
 
+  // Reset all cached transform data. Frame registrations are preserved.
+  void clear();
+
 private:
   struct TransformAccum
   {

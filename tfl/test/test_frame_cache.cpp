@@ -163,3 +163,26 @@ TEST(FrameTransformBuffer, IsStatic)
   FrameTransformBuffer static_cache(1, true);
   EXPECT_TRUE(static_cache.is_static());
 }
+
+TEST(FrameTransformBuffer, Clear)
+{
+  FrameTransformBuffer cache;
+  cache.insert(make_data(1000, 1), kDuration);
+  cache.insert(make_data(2000, 1), kDuration);
+
+  TransformData d1, d2;
+  EXPECT_EQ(cache.get_data(1000, d1, d2), 1);
+  EXPECT_EQ(cache.get_latest_stamp(), 2000);
+
+  cache.clear();
+
+  EXPECT_EQ(cache.get_data(1000, d1, d2), 0);
+  EXPECT_EQ(cache.get_data(0, d1, d2), 0);
+  EXPECT_EQ(cache.get_latest_stamp(), 0);
+
+  // Can insert again after clear
+  cache.insert(make_data(5000, 2), kDuration);
+  EXPECT_EQ(cache.get_data(5000, d1, d2), 1);
+  EXPECT_EQ(d1.stamp_ns, 5000);
+  EXPECT_EQ(d1.parent_id, 2u);
+}
