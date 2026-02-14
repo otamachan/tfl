@@ -1,0 +1,6 @@
+benchmark/ws/build/
+benchmark/ws/install/
+benchmark/ws/log/
+benchmark/ws/docker-build/
+benchmark/ws/docker-install/
+benchmark/ws/docker-log/

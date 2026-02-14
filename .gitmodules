@@ -1,0 +1,3 @@
+[submodule "benchmark/geometry2"]
+	path = benchmark/geometry2
+	url = https://github.com/otamachan/geometry2.git

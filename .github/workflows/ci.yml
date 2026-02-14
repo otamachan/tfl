@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ros_distro: [jazzy, rolling]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Build and test
+        run: |
+          ROS_DISTRO=${{ matrix.ros_distro }} ./run.sh bash -c \
+            "cd benchmark/ws \
+             && source /opt/ros/\$ROS_DISTRO/setup.bash \
+             && colcon build --packages-select tfl tfl_ros --event-handlers console_direct+ \
+             && source install/setup.bash \
+             && colcon test --packages-select tfl tfl_ros --event-handlers console_direct+ \
+             && colcon test-result --verbose"
