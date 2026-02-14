@@ -44,6 +44,19 @@ TransformListener::TransformListener(
       options);
   }
 
+  auto post_jump_cb = [this](const rcl_time_jump_t & jump) {
+    if (
+      RCL_ROS_TIME_ACTIVATED == jump.clock_change ||
+      RCL_ROS_TIME_DEACTIVATED == jump.clock_change || jump.delta.nanoseconds < 0) {
+      buffer_.clear();
+    }
+  };
+  rcl_jump_threshold_t threshold;
+  threshold.min_forward.nanoseconds = 0;
+  threshold.min_backward.nanoseconds = -1;
+  threshold.on_clock_change = true;
+  jump_handler_ = node_->get_clock()->create_jump_callback(nullptr, post_jump_cb, threshold);
+
   executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
   executor_->add_callback_group(callback_group_, node_->get_node_base_interface());
   dedicated_listener_thread_ = std::make_unique<std::thread>([this]() { executor_->spin(); });
@@ -53,6 +66,7 @@ TransformListener::~TransformListener()
 {
   executor_->cancel();
   dedicated_listener_thread_->join();
+  jump_handler_.reset();
 }
 
 void TransformListener::subscription_callback(

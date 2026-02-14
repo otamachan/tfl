@@ -158,6 +158,14 @@ FrameID TransformBuffer::resolve_frame_id(const std::string & name) const
   return name_to_id_.find(name);
 }
 
+void TransformBuffer::clear()
+{
+  const uint32_t count = next_id_.load(std::memory_order_relaxed);
+  for (uint32_t i = 1; i < count; ++i) {
+    frames_[i].clear();
+  }
+}
+
 void TransformBuffer::TransformAccum::accum_source(const TransformData & st)
 {
   Vec3 rotated;

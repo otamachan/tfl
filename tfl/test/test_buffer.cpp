@@ -133,3 +133,21 @@ TEST(TransformBuffer, LookupFailsForUnknownFrame)
   auto result = buf.lookup_transform("a", "unknown", 1000);
   EXPECT_FALSE(result.has_value());
 }
+
+TEST(TransformBuffer, ClearResetsData)
+{
+  TransformBuffer buf;
+  buf.set_transform("b", "a", make_translation(1000, 1.0, 2.0, 3.0));
+  ASSERT_TRUE(buf.lookup_transform("a", "b", 1000).has_value());
+
+  buf.clear();
+
+  EXPECT_FALSE(buf.lookup_transform("a", "b", 1000).has_value());
+  EXPECT_FALSE(buf.can_transform("a", "b", 1000));
+
+  // Frame registrations preserved: can insert and lookup again
+  buf.set_transform("b", "a", make_translation(5000, 4.0, 5.0, 6.0));
+  auto result = buf.lookup_transform("a", "b", 5000);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_DOUBLE_EQ(result->translation[0], 4.0);
+}

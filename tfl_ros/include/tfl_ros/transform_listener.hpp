@@ -45,6 +45,7 @@ private:
   std::unique_ptr<std::thread> dedicated_listener_thread_;
   rclcpp::Subscription<tf2_msgs::msg::TFMessage>::SharedPtr sub_tf_;
   rclcpp::Subscription<tf2_msgs::msg::TFMessage>::SharedPtr sub_tf_static_;
+  rclcpp::JumpHandler::SharedPtr jump_handler_;
 };
 
 }  // namespace tfl_ros
