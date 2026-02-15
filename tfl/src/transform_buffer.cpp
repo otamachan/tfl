@@ -307,6 +307,77 @@ std::optional<TransformData> TransformBuffer::walk_to_top_parent(
   return result;
 }
 
+bool TransformBuffer::can_walk_to_top_parent(
+  FrameID target_id, FrameID source_id, TimeNs time) const
+{
+  if (source_id == target_id) {
+    return true;
+  }
+
+  if (time == 0) {
+    time = get_latest_common_time(target_id, source_id);
+    if (time == 0) {
+      return false;
+    }
+  }
+
+  // Phase 1: walk source chain using get_parent only
+  FrameID frame = source_id;
+  FrameID top_parent = INVALID_FRAME;
+  uint32_t depth = 0;
+
+  while (frame != INVALID_FRAME && depth < MAX_GRAPH_DEPTH) {
+    if (frame >= max_frames_) {
+      return false;
+    }
+
+    if (frame == target_id) {
+      return true;
+    }
+
+    const FrameID parent = frames_[frame].get_parent(time);
+    if (parent == INVALID_FRAME) {
+      top_parent = frame;
+      break;
+    }
+
+    top_parent = frame;
+    frame = parent;
+    depth++;
+
+    if (frame == target_id) {
+      return true;
+    }
+  }
+  if (depth >= MAX_GRAPH_DEPTH) {
+    return false;
+  }
+
+  // Phase 2: walk target chain using get_parent only
+  frame = target_id;
+  depth = 0;
+
+  while (frame != top_parent && frame != INVALID_FRAME && depth < MAX_GRAPH_DEPTH) {
+    if (frame >= max_frames_) {
+      return false;
+    }
+
+    const FrameID parent = frames_[frame].get_parent(time);
+    if (parent == INVALID_FRAME) {
+      return false;
+    }
+
+    frame = parent;
+    depth++;
+
+    if (frame == source_id) {
+      return true;
+    }
+  }
+
+  return frame == top_parent;
+}
+
 std::optional<TransformData> TransformBuffer::lookup_transform(
   const std::string & target, const std::string & source, TimeNs time) const
 {
@@ -326,7 +397,7 @@ bool TransformBuffer::can_transform(
   if (t == INVALID_FRAME || s == INVALID_FRAME) {
     return false;
   }
-  return walk_to_top_parent(t, s, time).has_value();
+  return can_walk_to_top_parent(t, s, time);
 }
 
 std::optional<TransformData> TransformBuffer::lookup_transform(
@@ -394,13 +465,16 @@ TimeNs TransformBuffer::get_latest_common_time(FrameID target_id, FrameID source
     }
 
     const TimeNs stamp = frames_[frame].get_latest_stamp();
-    if (!frames_[frame].is_static()) {
-      if (stamp == 0) {
-        return 0;
-      }
-      if (stamp < common_time) {
-        common_time = stamp;
-      }
+    const bool has_data = (stamp != 0 || frames_[frame].is_static());
+
+    if (!has_data) {
+      // Root frame with no data — record as chain endpoint and stop
+      source_chain[source_len++] = {0, frame};
+      break;
+    }
+
+    if (!frames_[frame].is_static() && stamp < common_time) {
+      common_time = stamp;
     }
 
     const FrameID parent = frames_[frame].get_parent(0);
@@ -421,27 +495,36 @@ TimeNs TransformBuffer::get_latest_common_time(FrameID target_id, FrameID source
     }
 
     const TimeNs stamp = frames_[frame].get_latest_stamp();
-    if (!frames_[frame].is_static()) {
-      if (stamp == 0) {
-        return 0;
-      }
-      if (stamp < common_time) {
+    const bool has_data = (stamp != 0 || frames_[frame].is_static());
+
+    if (has_data) {
+      if (!frames_[frame].is_static() && stamp < common_time) {
         common_time = stamp;
       }
     }
 
-    const FrameID parent = frames_[frame].get_parent(0);
+    const FrameID parent = has_data ? frames_[frame].get_parent(0) : INVALID_FRAME;
 
     for (uint32_t i = 0; i < source_len; ++i) {
-      if (source_chain[i].id == frame || parent == source_chain[i].id) {
+      bool match = source_chain[i].id == frame;
+      if (!match && parent != INVALID_FRAME) {
+        match = (parent == source_chain[i].id);
+      }
+      if (match) {
         TimeNs result = common_time;
         for (uint32_t j = 0; j <= i; ++j) {
-          if (!frames_[source_chain[j].id].is_static() && source_chain[j].stamp < result) {
+          if (
+            source_chain[j].stamp != 0 && !frames_[source_chain[j].id].is_static() &&
+            source_chain[j].stamp < result) {
             result = source_chain[j].stamp;
           }
         }
         return result == std::numeric_limits<TimeNs>::max() ? 0 : result;
       }
+    }
+
+    if (!has_data) {
+      return 0;
     }
 
     frame = parent;

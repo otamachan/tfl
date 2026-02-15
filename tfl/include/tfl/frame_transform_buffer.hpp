@@ -31,8 +31,9 @@ public:
   static constexpr uint32_t kDefaultCapacity = 2000;
 
   explicit FrameTransformBuffer(uint32_t capacity = kDefaultCapacity, bool is_static = false)
-  : buf_(std::make_unique<TransformData[]>(is_static ? 1 : capacity)),
-    capacity_(is_static ? 1 : capacity),
+  : buf_(std::make_unique<TransformData[]>(is_static ? 1 : round_up_pow2(capacity))),
+    capacity_(is_static ? 1 : round_up_pow2(capacity)),
+    mask_(capacity_ - 1),
     is_static_(is_static)
   {
   }
@@ -41,6 +42,7 @@ public:
   : seq_(o.seq_.load(std::memory_order_relaxed)),
     buf_(std::move(o.buf_)),
     capacity_(o.capacity_),
+    mask_(o.mask_),
     head_(o.head_.load(std::memory_order_relaxed)),
     size_(o.size_.load(std::memory_order_relaxed)),
     is_static_(o.is_static_)
@@ -53,6 +55,7 @@ public:
       seq_.store(o.seq_.load(std::memory_order_relaxed), std::memory_order_relaxed);
       buf_ = std::move(o.buf_);
       capacity_ = o.capacity_;
+      mask_ = o.mask_;
       head_.store(o.head_.load(std::memory_order_relaxed), std::memory_order_relaxed);
       size_.store(o.size_.load(std::memory_order_relaxed), std::memory_order_relaxed);
       is_static_ = o.is_static_;
@@ -92,14 +95,14 @@ public:
         // Find insertion point: data should go in timestamp order
         // Common case: new data is newest
         if (data.stamp_ns >= buf_[h].stamp_ns) {
-          h = (h + 1) % capacity_;
+          h = (h + 1) & mask_;
           if (sz < capacity_) {
             sz++;
           }
           buf_[h] = data;
         } else {
           // Out-of-order insert: find correct position
-          h = (h + 1) % capacity_;
+          h = (h + 1) & mask_;
           if (sz < capacity_) {
             sz++;
           }
@@ -187,9 +190,19 @@ public:
 
   FrameID get_parent(TimeNs time) const
   {
-    TransformData d1, d2;
-    if (get_data(time, d1, d2) > 0) {
-      return d1.parent_id;
+    for (int retry = 0; retry < kMaxSeqRetries; ++retry) {
+      uint64_t s1 = seq_.load(std::memory_order_acquire);
+      if (s1 & 1) {
+        continue;
+      }
+
+      FrameID result = get_parent_unsafe(time);
+
+      std::atomic_thread_fence(std::memory_order_acquire);
+      uint64_t s2 = seq_.load(std::memory_order_acquire);
+      if (s1 == s2) {
+        return result;
+      }
     }
     return INVALID_FRAME;
   }
@@ -211,8 +224,46 @@ public:
 
 private:
   static constexpr int kMaxSeqRetries = 64;
+
+  static constexpr uint32_t round_up_pow2(uint32_t v)
+  {
+    if (v <= 1) return 1;
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    return v + 1;
+  }
+
   // Logical index i (0=newest) to physical buffer index
-  uint32_t phys_idx(uint32_t head, uint32_t i) const { return (head + capacity_ - i) % capacity_; }
+  uint32_t phys_idx(uint32_t head, uint32_t i) const { return (head + capacity_ - i) & mask_; }
+
+  // Lightweight parent lookup — only reads parent_id, no TransformData copy
+  FrameID get_parent_unsafe(TimeNs time) const
+  {
+    if (is_static_) {
+      return buf_[0].parent_id;
+    }
+    uint32_t sz = size_.load(std::memory_order_relaxed);
+    if (sz == 0) {
+      return INVALID_FRAME;
+    }
+    uint32_t h = head_.load(std::memory_order_relaxed);
+    if (time == 0 || sz == 1) {
+      return buf_[h].parent_id;
+    }
+    // For non-zero time with multiple entries, check range and return parent
+    // (parent_id is same for all entries in a frame)
+    TimeNs newest = buf_[h].stamp_ns;
+    uint32_t oldest_idx = phys_idx(h, sz - 1);
+    TimeNs oldest = buf_[oldest_idx].stamp_ns;
+    if (time > newest || time < oldest) {
+      return INVALID_FRAME;
+    }
+    return buf_[h].parent_id;
+  }
 
   // Must be called inside SeqLock read section (no seq_ check)
   uint8_t get_data_unsafe(TimeNs time, TransformData & d1, TransformData & d2) const
@@ -310,6 +361,7 @@ private:
   alignas(64) std::atomic<uint64_t> seq_{0};
   std::unique_ptr<TransformData[]> buf_;
   uint32_t capacity_;
+  uint32_t mask_;
   std::atomic<uint32_t> head_{0};
   std::atomic<uint32_t> size_{0};
   bool is_static_;
