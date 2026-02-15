@@ -79,20 +79,20 @@ rm -rf benchmark/ws/docker-build benchmark/ws/docker-install
 ```
 Test                                               Iters    Total(us) Per-call(ns)
 ----                                               -----    --------- ------------
-setTransform (100k calls)                         100000      15084.6        150.8
-lookupTransform identity (1M)                    1000000      35737.7         35.7
-lookupTransform chain=5 (500k)                    500000     102345.3        204.7
-lookupTransform chain=10 (500k)                   500000     158872.4        317.7
-lookupTransform cross-branch (500k)               500000     165545.4        331.1
-lookupTransform interp (500k)                     500000      95114.8        190.2
-canTransform chain=10 (1M)                       1000000     211918.8        211.9
-lookupTransform static chain=10 (500k)            500000     162956.3        325.9
-V-tree lookup Time(0) latest (1M)                1000000     322561.5        322.6
-V-tree lookup Time(1) exact (1M)                 1000000     195274.6        195.3
-V-tree lookup Time(1.5) interp (1M)              1000000     275989.4        276.0
-V-tree lookup Time(2) exact (1M)                 1000000     193896.1        193.9
-V-tree canTransform Time(0) (1M)                 1000000     222334.8        222.3
-V-tree canTransform Time(1.5) (1M)               1000000     102421.8        102.4
+setTransform (100k calls)                         100000      18866.6        188.7
+lookupTransform identity (1M)                    1000000      38069.1         38.1
+lookupTransform chain=5 (500k)                    500000     101472.8        202.9
+lookupTransform chain=10 (500k)                   500000     162521.8        325.0
+lookupTransform cross-branch (500k)               500000     165925.6        331.9
+lookupTransform interp (500k)                     500000      94890.8        189.8
+canTransform chain=10 (1M)                       1000000     217480.9        217.5
+lookupTransform static chain=10 (500k)            500000     155966.6        311.9
+V-tree lookup Time(0) latest (1M)                1000000     324230.9        324.2
+V-tree lookup Time(1) exact (1M)                 1000000     197718.9        197.7
+V-tree lookup Time(1.5) interp (1M)              1000000     282431.2        282.4
+V-tree lookup Time(2) exact (1M)                 1000000     194623.8        194.6
+V-tree canTransform Time(0) (1M)                 1000000     222324.2        222.3
+V-tree canTransform Time(1.5) (1M)               1000000     102002.6        102.0
 ```
 
 ### Multi-thread: Reader Scalability (no writer)
@@ -100,10 +100,10 @@ V-tree canTransform Time(1.5) (1M)               1000000     102421.8        102
 ```
 Readers      Total(ops/s) Per-thr(ops/s) Per-call(ns)
 -------      ------------ -------------- ------------
-1                 1813527        1813527        551.4
-2                 1141904         570952       1751.5
-4                  827098         206775       4836.2
-8                  421974          52747      18958.5
+1                 1676801        1676801        596.4
+2                 1176801         588400       1699.5
+4                  805070         201267       4968.5
+8                  442510          55314      18078.7
 ```
 
 ### Multi-thread: 1 Writer + N Readers
@@ -112,43 +112,43 @@ Readers      Total(ops/s) Per-thr(ops/s) Per-call(ns)
 ```
 Readers       Read(ops/s) Per-thr(ops/s) Per-call(ns) Write(ops/s)
 -------       ----------- -------------- ------------ ------------
-1                 1705530        1705530        586.3          990
-2                 1155967         577983       1730.2          990
-4                  825281         206320       4846.8          990
-8                  555678          69460      14396.8          960
+1                 1797084        1797084        556.5          990
+2                 1121869         560934       1782.7          990
+4                  835330         208833       4788.5          990
+8                  338211          42276      23653.9          940
 ```
 
 **Writer 1kHz**
 ```
 Readers       Read(ops/s) Per-thr(ops/s) Per-call(ns) Write(ops/s)
 -------       ----------- -------------- ------------ ------------
-1                 1774553        1774553        563.5         9040
-2                 1096664         548332       1823.7         8930
-4                  800859         200215       4994.6         8600
-8                  277623          34703      28816.1         6039
+1                 1738308        1738308        575.3         9120
+2                 1111755         555878       1799.0         8841
+4                  815506         203877       4904.9         8660
+8                  291660          36458      27429.2         5909
 ```
 
 **Writer 10kHz (high-frequency sensor)**
 ```
 Readers       Read(ops/s) Per-thr(ops/s) Per-call(ns) Write(ops/s)
 -------       ----------- -------------- ------------ ------------
-1                 1559969        1559969        641.0        55698
-2                 1005731         502865       1988.6        48784
-4                  784963         196241       5095.8        42510
-8                  612154          76519      13068.6        22018
+1                 1640181        1640181        609.7        55552
+2                  995752         497876       2008.5        46751
+4                  795321         198830       5029.4        41311
+8                  273988          34249      29198.3        13048
 ```
 
 ### Multi-thread: Latency Distribution (1 Writer + 1 Reader)
 
 ```
                     100Hz       1kHz      10kHz
-Samples:          3392904    3292607    3105749
-Mean:             572.5 ns   590.2 ns   626.7 ns
-p50:              557 ns     560 ns     560 ns
-p90:              594 ns     609 ns     612 ns
-p99:              766 ns     881 ns    1879 ns
-p99.9:           1324 ns    4184 ns    6725 ns
-Max:           132337 ns   152704 ns   51836 ns
+Samples:          3368331    3333288    3057323
+Mean:             576.7 ns   583.1 ns   636.7 ns
+p50:              557 ns     558 ns     572 ns
+p90:              598 ns     599 ns     627 ns
+p99:              764 ns     832 ns    1876 ns
+p99.9:           1998 ns    4187 ns    7196 ns
+Max:           123208 ns   128754 ns  584838 ns
 ```
 
 ## Results (tfl)
@@ -158,20 +158,20 @@ Max:           132337 ns   152704 ns   51836 ns
 ```
 Test                                               Iters    Total(us) Per-call(ns)
 ----                                               -----    --------- ------------
-setTransform (100k calls)                         100000       5710.2         57.1
-lookupTransform identity (1M)                    1000000      20875.0         20.9
-lookupTransform chain=5 (500k)                    500000      23458.1         46.9
-lookupTransform chain=10 (500k)                   500000      38599.3         77.2
-lookupTransform cross-branch (500k)               500000      21700.5         43.4
-lookupTransform interp (500k)                     500000      50513.7        101.0
-canTransform chain=10 (1M)                       1000000      82484.4         82.5
-lookupTransform static chain=10 (500k)            500000      34911.4         69.8
-V-tree lookup Time(0) latest (1M)                1000000      40886.5         40.9
-V-tree lookup Time(1) exact (1M)                 1000000     235956.4        236.0
-V-tree lookup Time(1.5) interp (1M)              1000000     304238.8        304.2
-V-tree lookup Time(2) exact (1M)                 1000000     226451.6        226.5
-V-tree canTransform Time(0) (1M)                 1000000      41042.5         41.0
-V-tree canTransform Time(1.5) (1M)               1000000     298100.2        298.1
+setTransform (100k calls)                         100000       3792.9         37.9
+lookupTransform identity (1M)                    1000000      20948.2         20.9
+lookupTransform chain=5 (500k)                    500000      60717.4        121.4
+lookupTransform chain=10 (500k)                   500000     113714.5        227.4
+lookupTransform cross-branch (500k)               500000     125488.1        251.0
+lookupTransform interp (500k)                     500000      37394.8         74.8
+canTransform chain=10 (1M)                       1000000     115500.5        115.5
+lookupTransform static chain=10 (500k)            500000      45116.0         90.2
+V-tree lookup Time(0) latest (1M)                1000000     235997.8        236.0
+V-tree lookup Time(1) exact (1M)                 1000000     185819.9        185.8
+V-tree lookup Time(1.5) interp (1M)              1000000     267801.6        267.8
+V-tree lookup Time(2) exact (1M)                 1000000     184817.0        184.8
+V-tree canTransform Time(0) (1M)                 1000000     109480.8        109.5
+V-tree canTransform Time(1.5) (1M)               1000000      49193.8         49.2
 ```
 
 ### Multi-thread: Reader Scalability (no writer)
@@ -179,10 +179,10 @@ V-tree canTransform Time(1.5) (1M)               1000000     298100.2        298
 ```
 Readers      Total(ops/s) Per-thr(ops/s) Per-call(ns)
 -------      ------------ -------------- ------------
-1                12227045       12227045         81.8
-2                24493677       12246839         81.7
-4                47182093       11795523         84.8
-8                94099950       11762494         85.0
+1                 4392685        4392685        227.7
+2                 8692769        4346385        230.1
+4                16944556        4236139        236.1
+8                30148234        3768529        265.4
 ```
 
 ### Multi-thread: 1 Writer + N Readers
@@ -191,43 +191,43 @@ Readers      Total(ops/s) Per-thr(ops/s) Per-call(ns)
 ```
 Readers       Read(ops/s) Per-thr(ops/s) Per-call(ns) Write(ops/s)
 -------       ----------- -------------- ------------ ------------
-1                12903366       12903366         77.5         1000
-2                25876646       12938323         77.3          990
-4                51646934       12911733         77.4          990
-8               102486149       12810769         78.1         1000
+1                 4361729        4361729        229.3          990
+2                 8638286        4319143        231.5          990
+4                17329075        4332269        230.8          990
+8                34667508        4333439        230.8         1000
 ```
 
 **Writer 1kHz**
 ```
 Readers       Read(ops/s) Per-thr(ops/s) Per-call(ns) Write(ops/s)
 -------       ----------- -------------- ------------ ------------
-1                12338933       12338933         81.0         9459
-2                24644257       12322129         81.2         9430
-4                49295531       12323883         81.1         9440
-8                99652599       12456575         80.3         9459
+1                 4294572        4294572        232.9         9449
+2                 8618758        4309379        232.1         9459
+4                17372733        4343183        230.2         9440
+8                34629014        4328627        231.0         9450
 ```
 
 **Writer 10kHz (high-frequency sensor)**
 ```
 Readers       Read(ops/s) Per-thr(ops/s) Per-call(ns) Write(ops/s)
 -------       ----------- -------------- ------------ ------------
-1                11646225       11646225         85.9        65195
-2                23522620       11761310         85.0        65376
-4                47237938       11809484         84.7        65150
-8                96666792       12083349         82.8        64897
+1                 4294471        4294471        232.9        65570
+2                 8654597        4327298        231.1        65072
+4                17234558        4308639        232.1        64947
+8                34425937        4303242        232.4        64940
 ```
 
 ### Multi-thread: Latency Distribution (1 Writer + 1 Reader)
 
 ```
                     100Hz       1kHz      10kHz
-Samples:         17126620   17086898   16885721
-Mean:              98.3 ns    98.7 ns    99.8 ns
-p50:              100 ns     100 ns     101 ns
-p90:              102 ns     102 ns     103 ns
-p99:              104 ns     109 ns     115 ns
-p99.9:            115 ns     192 ns     334 ns
-Max:            50564 ns    29345 ns   34314 ns
+Samples:          7045956    7077089    7008793
+Mean:             267.0 ns   265.8 ns   268.5 ns
+p50:              264 ns     263 ns     265 ns
+p90:              270 ns     267 ns     271 ns
+p99:              305 ns     324 ns     334 ns
+p99.9:            436 ns     511 ns     937 ns
+Max:          1047840 ns    31200 ns   53519 ns
 ```
 
 ## Comparison (tf2 vs tfl)
@@ -236,39 +236,39 @@ Max:            50564 ns    29345 ns   34314 ns
 
 | Test | tf2 (ns) | tfl (ns) | Speedup |
 |------|----------|----------|---------|
-| setTransform | 150.8 | 57.1 | 2.6x |
-| lookupTransform identity | 35.7 | 20.9 | 1.7x |
-| lookupTransform chain=5 | 204.7 | 46.9 | 4.4x |
-| lookupTransform chain=10 | 317.7 | 77.2 | 4.1x |
-| lookupTransform cross-branch | 331.1 | 43.4 | 7.6x |
-| lookupTransform interp | 190.2 | 101.0 | 1.9x |
-| canTransform chain=10 | 211.9 | 82.5 | 2.6x |
-| lookupTransform static chain=10 | 325.9 | 69.8 | 4.7x |
+| setTransform | 188.7 | 37.9 | 5.0x |
+| lookupTransform identity | 38.1 | 20.9 | 1.8x |
+| lookupTransform chain=5 | 202.9 | 121.4 | 1.7x |
+| lookupTransform chain=10 | 325.0 | 227.4 | 1.4x |
+| lookupTransform cross-branch | 331.9 | 251.0 | 1.3x |
+| lookupTransform interp | 189.8 | 74.8 | 2.5x |
+| canTransform chain=10 | 217.5 | 115.5 | 1.9x |
+| lookupTransform static chain=10 | 311.9 | 90.2 | 3.5x |
 
 ### Single-thread: V-tree (cross-branch, 10 hops)
 
 | Test | tf2 (ns) | tfl (ns) | Speedup |
 |------|----------|----------|---------|
-| V-tree Time(0) latest | 322.6 | 40.9 | 7.9x |
-| V-tree Time(1) exact | 195.3 | 236.0 | 0.8x |
-| V-tree Time(1.5) interp | 276.0 | 304.2 | 0.9x |
-| V-tree Time(2) exact | 193.9 | 226.5 | 0.9x |
-| V-tree canTransform Time(0) | 222.3 | 41.0 | 5.4x |
-| V-tree canTransform Time(1.5) | 102.4 | 298.1 | 0.3x |
+| V-tree Time(0) latest | 324.2 | 236.0 | 1.4x |
+| V-tree Time(1) exact | 197.7 | 185.8 | 1.1x |
+| V-tree Time(1.5) interp | 282.4 | 267.8 | 1.1x |
+| V-tree Time(2) exact | 194.6 | 184.8 | 1.1x |
+| V-tree canTransform Time(0) | 222.3 | 109.5 | 2.0x |
+| V-tree canTransform Time(1.5) | 102.0 | 49.2 | 2.1x |
 
 ### Multi-thread: Reader Scalability (per-thread ops/s, no writer)
 
 | Readers | tf2 | tfl | Speedup |
 |---------|-----|-----|---------|
-| 1 | 1.8M | 12.2M | 6.7x |
-| 2 | 571k | 12.2M | 21x |
-| 4 | 207k | 11.8M | 57x |
-| 8 | 53k | 11.8M | 223x |
+| 1 | 1.7M | 4.4M | 2.6x |
+| 2 | 588k | 4.3M | 7.4x |
+| 4 | 201k | 4.2M | 21.1x |
+| 8 | 55k | 3.8M | 68.1x |
 
 ### Multi-thread: Latency p50 (1 Writer + 1 Reader)
 
 | Writer freq | tf2 | tfl | Speedup |
 |-------------|-----|-----|---------|
-| 100Hz | 557 ns | 100 ns | 5.6x |
-| 1kHz | 560 ns | 100 ns | 5.6x |
-| 10kHz | 560 ns | 101 ns | 5.5x |
+| 100Hz | 557 ns | 264 ns | 2.1x |
+| 1kHz | 558 ns | 263 ns | 2.1x |
+| 10kHz | 572 ns | 265 ns | 2.2x |

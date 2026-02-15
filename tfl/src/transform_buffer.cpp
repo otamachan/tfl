@@ -203,18 +203,13 @@ void interpolate(
 // Fetch frame data with interpolation. Returns false on error.
 bool get_frame_data(const FrameTransformBuffer & cache, TimeNs time, TransformData & st)
 {
-  TransformData d1, d2;
-  const uint8_t n = cache.get_data(time, d1, d2);
-  if (n == 0) {
-    return false;
+  TransformData d2;
+  const uint8_t n = cache.get_data(time, st, d2);
+  if (n == 2) {
+    TransformData d1 = st;
+    interpolate(d1, d2, time, st);
   }
-  if (n == 1) {
-    st = d1;
-    return true;
-  }
-  // n == 2
-  interpolate(d1, d2, time, st);
-  return true;
+  return n > 0;
 }
 
 std::optional<TransformData> TransformBuffer::walk_to_top_parent(
@@ -256,7 +251,11 @@ std::optional<TransformData> TransformBuffer::walk_to_top_parent(
       break;
     }
 
-    source_to_top = compose(st, source_to_top);
+    if (depth == 0) {
+      source_to_top = st;
+    } else {
+      source_to_top = compose(st, source_to_top);
+    }
 
     top_parent = frame;
     frame = st.parent_id;
@@ -286,7 +285,11 @@ std::optional<TransformData> TransformBuffer::walk_to_top_parent(
       return std::nullopt;
     }
 
-    target_to_top = compose(st, target_to_top);
+    if (depth == 0) {
+      target_to_top = st;
+    } else {
+      target_to_top = compose(st, target_to_top);
+    }
     frame = st.parent_id;
     depth++;
 
