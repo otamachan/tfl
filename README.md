@@ -13,6 +13,36 @@ tf2's `BufferCore` uses `std::mutex` to protect shared data. This means all conc
 | `tfl` | Core library. No ROS dependencies. Mutex-free transform buffer. |
 | `tfl_ros` | ROS 2 integration. Subscribes to `/tf` and `/tf_static`, feeds into `tfl::TransformBuffer`. |
 
+## Design
+
+### Threading model
+
+```
+Writer thread (single)          Reader threads (many)
+  TransformListener               lookup_transform()
+    /tf callback ──┐               can_transform()
+    /tf_static ────┤                    │
+                   ▼                    ▼
+              set_transform()     SeqLock read (retry on conflict)
+                   │                    │
+                   ▼                    ▼
+              FrameTransformBuffer (circular buffer per frame)
+              FrameMap (wait-free hash map)
+```
+
+### Components
+
+| Class | Role | Read | Write | Synchronization |
+|-------|------|------|-------|-----------------|
+| `FrameMap` | Frame name → ID mapping | Wait-free | Single-writer | Atomic hash slots, open addressing |
+| `FrameTransformBuffer` | Per-frame transform history | Obstruction-free (SeqLock) | Single-writer | SeqLock (sequence counter) |
+| `TransformBuffer` | Frame tree, LCA traversal | Mutex-free (delegates to above) | Single-writer | Composes FrameMap + FrameTransformBuffer |
+| `TransformListener` | ROS 2 `/tf` subscriber | — | Dedicated thread | SingleThreadedExecutor + MutuallyExclusive callback group |
+
+- **Wait-free**: Reads complete in bounded steps regardless of other threads.
+- **Obstruction-free**: Reads complete in bounded steps if no write is in progress. Under contention, retries up to 64 times.
+- **Single-writer**: All writes (`set_transform`) must come from one thread. `TransformListener` enforces this with a dedicated executor thread.
+
 ## Prerequisites
 
 - Docker
@@ -65,36 +95,6 @@ ln -s ../../tfl_ros ws/src/tfl_ros  # optional
 ```
 
 For tf2 comparison benchmarks, see [benchmark/README.md](benchmark/README.md).
-
-## Design
-
-### Threading model
-
-```
-Writer thread (single)          Reader threads (many)
-  TransformListener               lookup_transform()
-    /tf callback ──┐               can_transform()
-    /tf_static ────┤                    │
-                   ▼                    ▼
-              set_transform()     SeqLock read (retry on conflict)
-                   │                    │
-                   ▼                    ▼
-              FrameTransformBuffer (circular buffer per frame)
-              FrameMap (wait-free hash map)
-```
-
-### Components
-
-| Class | Role | Read | Write | Synchronization |
-|-------|------|------|-------|-----------------|
-| `FrameMap` | Frame name → ID mapping | Wait-free | Single-writer | Atomic hash slots, open addressing |
-| `FrameTransformBuffer` | Per-frame transform history | Obstruction-free (SeqLock) | Single-writer | SeqLock (sequence counter) |
-| `TransformBuffer` | Frame tree, LCA traversal | Mutex-free (delegates to above) | Single-writer | Composes FrameMap + FrameTransformBuffer |
-| `TransformListener` | ROS 2 `/tf` subscriber | — | Dedicated thread | SingleThreadedExecutor + MutuallyExclusive callback group |
-
-- **Wait-free**: Reads complete in bounded steps regardless of other threads.
-- **Obstruction-free**: Reads complete in bounded steps if no write is in progress. Under contention, retries up to 64 times.
-- **Single-writer**: All writes (`set_transform`) must come from one thread. `TransformListener` enforces this with a dedicated executor thread.
 
 ## Requirements
 
