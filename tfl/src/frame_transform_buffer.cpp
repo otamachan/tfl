@@ -64,7 +64,7 @@ void FrameTransformBuffer::insert(const TransformData & data, TimeNs cache_durat
 
     // Reject old data
     if (sz > 0) {
-      TimeNs latest = buf_[h].stamp_ns;
+      const TimeNs latest = buf_[h].stamp_ns;
       if (data.stamp_ns < latest - cache_duration_ns) {
         // Too old, skip — still need to end the SeqLock
         std::atomic_thread_fence(std::memory_order_release);
@@ -106,9 +106,9 @@ void FrameTransformBuffer::insert(const TransformData & data, TimeNs cache_durat
 
     // Prune old entries
     if (sz > 1) {
-      TimeNs newest = buf_[h].stamp_ns;
+      const TimeNs newest = buf_[h].stamp_ns;
       while (sz > 1) {
-        uint32_t tail = phys_idx(h, sz - 1);
+        const uint32_t tail = phys_idx(h, sz - 1);
         if (buf_[tail].stamp_ns >= newest - cache_duration_ns) {
           break;
         }
@@ -139,12 +139,12 @@ void FrameTransformBuffer::clear()
 
 void FrameTransformBuffer::sort_buffer()
 {
-  uint32_t h = head_.load(std::memory_order_relaxed);
-  uint32_t sz = size_.load(std::memory_order_relaxed);
+  const uint32_t h = head_.load(std::memory_order_relaxed);
+  const uint32_t sz = size_.load(std::memory_order_relaxed);
   // Simple insertion sort on the logical window (small and rare)
   for (uint32_t i = 1; i < sz; ++i) {
-    uint32_t pi = phys_idx(h, i);
-    TransformData key = buf_[pi];
+    const uint32_t pi = phys_idx(h, i);
+    const TransformData key = buf_[pi];
     uint32_t j = i;
     while (j > 0 && buf_[phys_idx(h, j - 1)].stamp_ns < key.stamp_ns) {
       buf_[phys_idx(h, j)] = buf_[phys_idx(h, j - 1)];

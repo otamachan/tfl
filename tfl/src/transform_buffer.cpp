@@ -204,12 +204,12 @@ void interpolate(
 bool get_frame_data(const FrameTransformBuffer & cache, TimeNs time, TransformData & st)
 {
   TransformData d2;
-  const uint8_t n = cache.get_data(time, st, d2);
-  if (n == 2) {
-    TransformData d1 = st;
+  const auto n = cache.get_data(time, st, d2);
+  if (n == FrameTransformBuffer::GetDataResult::kInterpolate) {
+    const TransformData d1 = st;
     interpolate(d1, d2, time, st);
   }
-  return n > 0;
+  return n != FrameTransformBuffer::GetDataResult::kNoData;
 }
 
 std::optional<TransformData> TransformBuffer::walk_to_top_parent(

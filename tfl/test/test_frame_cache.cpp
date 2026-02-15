@@ -20,6 +20,7 @@ using tfl::FrameID;
 using tfl::FrameTransformBuffer;
 using tfl::TimeNs;
 using tfl::TransformData;
+using GDR = FrameTransformBuffer::GetDataResult;
 
 namespace
 {
@@ -37,11 +38,11 @@ constexpr TimeNs kDuration = 10'000'000'000LL;
 
 }  // namespace
 
-TEST(FrameTransformBuffer, EmptyGetDataReturnsZero)
+TEST(FrameTransformBuffer, EmptyGetDataReturnsNoData)
 {
   FrameTransformBuffer cache;
   TransformData d1, d2;
-  EXPECT_EQ(cache.get_data(100, d1, d2), 0);
+  EXPECT_EQ(cache.get_data(100, d1, d2), GDR::kNoData);
 }
 
 TEST(FrameTransformBuffer, InsertOneGetData)
@@ -50,7 +51,7 @@ TEST(FrameTransformBuffer, InsertOneGetData)
   cache.insert(make_data(1000, 1), kDuration);
 
   TransformData d1, d2;
-  EXPECT_EQ(cache.get_data(1000, d1, d2), 1);
+  EXPECT_EQ(cache.get_data(1000, d1, d2), GDR::kExactMatch);
   EXPECT_EQ(d1.stamp_ns, 1000);
   EXPECT_EQ(d1.parent_id, 1u);
 }
@@ -62,7 +63,7 @@ TEST(FrameTransformBuffer, LatestTimeZero)
   cache.insert(make_data(2000, 1), kDuration);
 
   TransformData d1, d2;
-  EXPECT_EQ(cache.get_data(0, d1, d2), 1);
+  EXPECT_EQ(cache.get_data(0, d1, d2), GDR::kExactMatch);
   EXPECT_EQ(d1.stamp_ns, 2000);
 }
 
@@ -74,7 +75,7 @@ TEST(FrameTransformBuffer, ExactMatch)
   cache.insert(make_data(3000, 1), kDuration);
 
   TransformData d1, d2;
-  EXPECT_EQ(cache.get_data(2000, d1, d2), 1);
+  EXPECT_EQ(cache.get_data(2000, d1, d2), GDR::kExactMatch);
   EXPECT_EQ(d1.stamp_ns, 2000);
 }
 
@@ -85,8 +86,8 @@ TEST(FrameTransformBuffer, InterpolationBracket)
   cache.insert(make_data(3000, 1), kDuration);
 
   TransformData d1, d2;
-  uint8_t n = cache.get_data(2000, d1, d2);
-  EXPECT_EQ(n, 2);
+  const auto n = cache.get_data(2000, d1, d2);
+  EXPECT_EQ(n, GDR::kInterpolate);
   EXPECT_EQ(d1.stamp_ns, 1000);  // older
   EXPECT_EQ(d2.stamp_ns, 3000);  // newer
 }
@@ -100,14 +101,14 @@ TEST(FrameTransformBuffer, OutOfOrderInsert)
 
   TransformData d1, d2;
   // Exact match
-  EXPECT_EQ(cache.get_data(1000, d1, d2), 1);
+  EXPECT_EQ(cache.get_data(1000, d1, d2), GDR::kExactMatch);
   EXPECT_EQ(d1.stamp_ns, 1000);
-  EXPECT_EQ(cache.get_data(3000, d1, d2), 1);
+  EXPECT_EQ(cache.get_data(3000, d1, d2), GDR::kExactMatch);
   EXPECT_EQ(d1.stamp_ns, 3000);
 
   // Interpolation bracket
-  uint8_t n = cache.get_data(2000, d1, d2);
-  EXPECT_EQ(n, 2);
+  const auto n = cache.get_data(2000, d1, d2);
+  EXPECT_EQ(n, GDR::kInterpolate);
   EXPECT_EQ(d1.stamp_ns, 1000);
   EXPECT_EQ(d2.stamp_ns, 3000);
 }
@@ -119,8 +120,8 @@ TEST(FrameTransformBuffer, OutOfRangeReturnsZero)
   cache.insert(make_data(2000, 1), kDuration);
 
   TransformData d1, d2;
-  EXPECT_EQ(cache.get_data(500, d1, d2), 0);
-  EXPECT_EQ(cache.get_data(3000, d1, d2), 0);
+  EXPECT_EQ(cache.get_data(500, d1, d2), GDR::kNoData);
+  EXPECT_EQ(cache.get_data(3000, d1, d2), GDR::kNoData);
 }
 
 TEST(FrameTransformBuffer, Pruning)
@@ -134,11 +135,11 @@ TEST(FrameTransformBuffer, Pruning)
 
   TransformData d1, d2;
   // stamp=100 is outside [2000 - 1000, 2000], should be pruned
-  EXPECT_EQ(cache.get_data(100, d1, d2), 0);
+  EXPECT_EQ(cache.get_data(100, d1, d2), GDR::kNoData);
   // stamp=200 is also outside
-  EXPECT_EQ(cache.get_data(200, d1, d2), 0);
+  EXPECT_EQ(cache.get_data(200, d1, d2), GDR::kNoData);
   // stamp=2000 should still be there
-  EXPECT_EQ(cache.get_data(2000, d1, d2), 1);
+  EXPECT_EQ(cache.get_data(2000, d1, d2), GDR::kExactMatch);
 }
 
 TEST(FrameTransformBuffer, StaticFrame)
@@ -150,7 +151,7 @@ TEST(FrameTransformBuffer, StaticFrame)
   cache.insert(d, kDuration);
 
   TransformData d1, d2;
-  EXPECT_EQ(cache.get_data(999, d1, d2), 1);
+  EXPECT_EQ(cache.get_data(999, d1, d2), GDR::kExactMatch);
   EXPECT_EQ(d1.stamp_ns, 999);  // stamp overwritten to requested time
   EXPECT_EQ(d1.parent_id, 5u);
   EXPECT_DOUBLE_EQ(d1.translation[0], 1.0);
@@ -192,18 +193,18 @@ TEST(FrameTransformBuffer, Clear)
   cache.insert(make_data(2000, 1), kDuration);
 
   TransformData d1, d2;
-  EXPECT_EQ(cache.get_data(1000, d1, d2), 1);
+  EXPECT_EQ(cache.get_data(1000, d1, d2), GDR::kExactMatch);
   EXPECT_EQ(cache.get_latest_stamp(), 2000);
 
   cache.clear();
 
-  EXPECT_EQ(cache.get_data(1000, d1, d2), 0);
-  EXPECT_EQ(cache.get_data(0, d1, d2), 0);
+  EXPECT_EQ(cache.get_data(1000, d1, d2), GDR::kNoData);
+  EXPECT_EQ(cache.get_data(0, d1, d2), GDR::kNoData);
   EXPECT_EQ(cache.get_latest_stamp(), 0);
 
   // Can insert again after clear
   cache.insert(make_data(5000, 2), kDuration);
-  EXPECT_EQ(cache.get_data(5000, d1, d2), 1);
+  EXPECT_EQ(cache.get_data(5000, d1, d2), GDR::kExactMatch);
   EXPECT_EQ(d1.stamp_ns, 5000);
   EXPECT_EQ(d1.parent_id, 2u);
 }
