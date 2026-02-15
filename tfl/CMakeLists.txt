@@ -8,7 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(ament_cmake REQUIRED)
 
-add_library(tfl STATIC src/transform_buffer.cpp)
+add_library(tfl STATIC src/frame_transform_buffer.cpp src/transform_buffer.cpp)
 set_target_properties(tfl PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(tfl PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
