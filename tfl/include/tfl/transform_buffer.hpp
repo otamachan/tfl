@@ -59,22 +59,6 @@ public:
   void clear();
 
 private:
-  struct TransformAccum
-  {
-    TransformData::Quat source_to_top_quat = {0, 0, 0, 1};
-    TransformData::Vec3 source_to_top_vec = {0, 0, 0};
-    TransformData::Quat target_to_top_quat = {0, 0, 0, 1};
-    TransformData::Vec3 target_to_top_vec = {0, 0, 0};
-    TimeNs time = 0;
-
-    void accum_source(const TransformData & st);
-    void accum_target(const TransformData & st);
-    TransformData finalize_identity() const;
-    TransformData finalize_target_parent_of_source() const;
-    TransformData finalize_source_parent_of_target() const;
-    TransformData finalize_full_path() const;
-  };
-
   FrameID register_frame(const std::string & name, bool is_static = false);
   FrameID resolve_frame_id(const std::string & name) const;
 

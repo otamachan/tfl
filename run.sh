@@ -13,7 +13,7 @@ fi
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   -v "$REPO_ROOT:$REPO_ROOT" \
-  -w "$(pwd)" \
+  -w "$REPO_ROOT" \
   -e HOME=/tmp/home \
   -e "ROS_DISTRO=${ROS_DISTRO}" \
   "$IMAGE_NAME" \
