@@ -183,50 +183,37 @@ TEST(TransformBuffer, RotationInterpolation)
 {
   const double pi = std::acos(-1.0);
   TransformBuffer buf;
-  // t=1000: identity, t=3000: 90 deg around Z
   buf.set_transform("b", "a", make_rotation_z(1000, 0.0));
   buf.set_transform("b", "a", make_rotation_z(3000, pi / 2.0));
 
-  // nlerp helper: lerp + normalize
-  auto nlerp_z = [&](double t) -> std::array<double, 4> {
-    // q1 = (0,0,0,1), q2 = (0, 0, sin(pi/4), cos(pi/4))
-    double q2z = std::sin(pi / 4.0);
-    double q2w = std::cos(pi / 4.0);
-    double rz = t * q2z;
-    double rw = (1.0 - t) + t * q2w;
-    double norm = 1.0 / std::sqrt(rz * rz + rw * rw);
-    return {0.0, 0.0, rz * norm, rw * norm};
-  };
-
-  // t=0.5 (midpoint): nlerp == slerp exactly
+  // slerp: constant angular velocity → angle = t * 90deg
+  // t=0.5 → 45 deg
   {
     auto result = buf.lookup_transform("a", "b", 2000);
     ASSERT_TRUE(result.has_value());
-    auto expected = nlerp_z(0.5);
-    EXPECT_NEAR(result->rotation[2], expected[2], 1e-9);
-    EXPECT_NEAR(result->rotation[3], expected[3], 1e-9);
+    const double angle = pi / 4.0;
+    EXPECT_NEAR(result->rotation[2], std::sin(angle / 2.0), 1e-9);
+    EXPECT_NEAR(result->rotation[3], std::cos(angle / 2.0), 1e-9);
   }
-
-  // t=0.25 (quarter): nlerp differs slightly from slerp
+  // t=0.25 → 22.5 deg
   {
     auto result = buf.lookup_transform("a", "b", 1500);
     ASSERT_TRUE(result.has_value());
-    auto expected = nlerp_z(0.25);
+    const double angle = pi / 8.0;
     EXPECT_NEAR(result->rotation[0], 0.0, 1e-9);
     EXPECT_NEAR(result->rotation[1], 0.0, 1e-9);
-    EXPECT_NEAR(result->rotation[2], expected[2], 1e-9);
-    EXPECT_NEAR(result->rotation[3], expected[3], 1e-9);
+    EXPECT_NEAR(result->rotation[2], std::sin(angle / 2.0), 1e-9);
+    EXPECT_NEAR(result->rotation[3], std::cos(angle / 2.0), 1e-9);
   }
-
-  // t=0.75 (three-quarter)
+  // t=0.75 → 67.5 deg
   {
     auto result = buf.lookup_transform("a", "b", 2500);
     ASSERT_TRUE(result.has_value());
-    auto expected = nlerp_z(0.75);
+    const double angle = 3.0 * pi / 8.0;
     EXPECT_NEAR(result->rotation[0], 0.0, 1e-9);
     EXPECT_NEAR(result->rotation[1], 0.0, 1e-9);
-    EXPECT_NEAR(result->rotation[2], expected[2], 1e-9);
-    EXPECT_NEAR(result->rotation[3], expected[3], 1e-9);
+    EXPECT_NEAR(result->rotation[2], std::sin(angle / 2.0), 1e-9);
+    EXPECT_NEAR(result->rotation[3], std::cos(angle / 2.0), 1e-9);
   }
 }
 

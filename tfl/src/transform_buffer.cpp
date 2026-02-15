@@ -54,21 +54,36 @@ void quat_rotate(const Quat & q, const Vec3 & v, Vec3 & out)
   out[2] = v[2] + q[3] * tz + (q[0] * ty - q[1] * tx);
 }
 
-// Normalized linear interpolation (nlerp): lerp + normalize.
-// No trig needed; constant speed not required for adjacent samples.
-void nlerp(const Quat & q1, const Quat & q2, double t, Quat & out)
+constexpr double kSlerpThreshold = 1e-6;
+
+double quat_dot(const Quat & a, const Quat & b)
 {
-  double d = q1[0] * q2[0] + q1[1] * q2[1] + q1[2] * q2[2] + q1[3] * q2[3];
-  const double sign = (d < 0.0) ? -1.0 : 1.0;
-  const double t1 = 1.0 - t;
-  const double t2 = t * sign;
-  for (int i = 0; i < 4; ++i) {
-    out[i] = t1 * q1[i] + t2 * q2[i];
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+}
+
+void slerp(const Quat & q1, const Quat & q2, double t, Quat & out)
+{
+  double d = quat_dot(q1, q2);
+  Quat q2a = q2;
+  if (d < 0.0) {
+    d = -d;
+    q2a[0] = -q2[0];
+    q2a[1] = -q2[1];
+    q2a[2] = -q2[2];
+    q2a[3] = -q2[3];
   }
-  const double norm =
-    1.0 / std::sqrt(out[0] * out[0] + out[1] * out[1] + out[2] * out[2] + out[3] * out[3]);
+  if (d > 1.0 - kSlerpThreshold) {
+    for (int i = 0; i < 4; ++i) {
+      out[i] = q1[i] + t * (q2a[i] - q1[i]);
+    }
+    return;
+  }
+  const double theta = std::acos(d);
+  const double sin_theta = std::sin(theta);
+  const double ra = std::sin((1.0 - t) * theta) / sin_theta;
+  const double rb = std::sin(t * theta) / sin_theta;
   for (int i = 0; i < 4; ++i) {
-    out[i] *= norm;
+    out[i] = ra * q1[i] + rb * q2a[i];
   }
 }
 
@@ -174,19 +189,19 @@ void TransformBuffer::clear()
   }
 }
 
-static void interpolate(
+void interpolate(
   const TransformData & d1, const TransformData & d2, TimeNs time, TransformData & out)
 {
   const double range = static_cast<double>(d2.stamp_ns - d1.stamp_ns);
   const double t = (range > 0.0) ? static_cast<double>(time - d1.stamp_ns) / range : 0.0;
-  nlerp(d1.rotation, d2.rotation, t, out.rotation);
+  slerp(d1.rotation, d2.rotation, t, out.rotation);
   lerp3(d1.translation, d2.translation, t, out.translation);
   out.stamp_ns = time;
   out.parent_id = d1.parent_id;
 }
 
 // Fetch frame data with interpolation. Returns false on error.
-static bool get_frame_data(const FrameTransformBuffer & cache, TimeNs time, TransformData & st)
+bool get_frame_data(const FrameTransformBuffer & cache, TimeNs time, TransformData & st)
 {
   TransformData d1, d2;
   const uint8_t n = cache.get_data(time, d1, d2);

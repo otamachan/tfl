@@ -214,7 +214,52 @@ int main()
     results.push_back({"lookupTransform static chain=10 (500k)", N, us, us * 1000.0 / N});
   }
 
-  // --- Bench 9-14: V-tree (tf2 speed_test equivalent) ---
+  // --- Bench 9: per-hop cost breakdown (chain 1 vs 5 vs 10 vs 20) ---
+  {
+    for (int depth : {1, 2, 5, 10, 20}) {
+      const int N = 1000000;
+      TransformBuffer buf;
+      buildChain(buf, depth, kOneSecNs, false);
+      buildChain(buf, depth, 2 * kOneSecNs, false);
+
+      std::string leaf = "frame_" + std::to_string(depth);
+
+      // exact match
+      auto t0 = Clock::now();
+      for (int i = 0; i < N; ++i) {
+        buf.lookup_transform("frame_0", leaf, kOneSecNs);
+      }
+      auto t1 = Clock::now();
+      double us_exact = std::chrono::duration<double, std::micro>(t1 - t0).count();
+
+      // interpolation
+      TimeNs mid_ns = kOneSecNs + kOneSecNs / 2;
+      t0 = Clock::now();
+      for (int i = 0; i < N; ++i) {
+        buf.lookup_transform("frame_0", leaf, mid_ns);
+      }
+      t1 = Clock::now();
+      double us_interp = std::chrono::duration<double, std::micro>(t1 - t0).count();
+
+      // Time(0) — latest
+      t0 = Clock::now();
+      for (int i = 0; i < N; ++i) {
+        buf.lookup_transform("frame_0", leaf, 0);
+      }
+      t1 = Clock::now();
+      double us_latest = std::chrono::duration<double, std::micro>(t1 - t0).count();
+
+      char name[64];
+      std::snprintf(name, sizeof(name), "chain=%d exact (1M)", depth);
+      results.push_back({name, N, us_exact, us_exact * 1000.0 / N});
+      std::snprintf(name, sizeof(name), "chain=%d interp (1M)", depth);
+      results.push_back({name, N, us_interp, us_interp * 1000.0 / N});
+      std::snprintf(name, sizeof(name), "chain=%d Time(0) (1M)", depth);
+      results.push_back({name, N, us_latest, us_latest * 1000.0 / N});
+    }
+  }
+
+  // --- Bench 11+: V-tree (tf2 speed_test equivalent) ---
   {
     const uint32_t num_levels = 10;
     const int N = 1000000;
