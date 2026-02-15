@@ -64,7 +64,7 @@ private:
 
   std::optional<TransformData> walk_to_top_parent(
     FrameID target_id, FrameID source_id, TimeNs time) const;
-
+  bool can_walk_to_top_parent(FrameID target_id, FrameID source_id, TimeNs time) const;
   TimeNs get_latest_common_time(FrameID target_id, FrameID source_id) const;
 
   uint32_t max_frames_;
