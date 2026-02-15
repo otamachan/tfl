@@ -39,13 +39,10 @@ public:
   // exists. Single-writer only.
   bool insert(const std::string & name, FrameID id)
   {
-    uint64_t h = hash(name);
-    if (h == 0) {
-      h = 1;  // 0 is reserved for empty
-    }
+    const uint64_t h = hash(name);
 
     for (uint32_t i = 0; i < capacity_; ++i) {
-      uint32_t idx = (static_cast<uint32_t>(h) + i) % capacity_;
+      const uint32_t idx = (static_cast<uint32_t>(h) + i) % capacity_;
       Slot & slot = slots_[idx];
 
       if (slot.hash.load(std::memory_order_acquire) == 0) {
@@ -71,16 +68,13 @@ public:
   // Find a name. Lock-free, safe from any thread.
   FrameID find(const std::string & name) const
   {
-    uint64_t h = hash(name);
-    if (h == 0) {
-      h = 1;
-    }
+    const uint64_t h = hash(name);
 
     for (uint32_t i = 0; i < capacity_; ++i) {
-      uint32_t idx = (static_cast<uint32_t>(h) + i) % capacity_;
+      const uint32_t idx = (static_cast<uint32_t>(h) + i) % capacity_;
       const Slot & slot = slots_[idx];
 
-      uint64_t sh = slot.hash.load(std::memory_order_acquire);
+      const uint64_t sh = slot.hash.load(std::memory_order_acquire);
       if (sh == 0) {
         return INVALID_FRAME;  // empty slot = not found
       }
@@ -97,7 +91,11 @@ public:
   uint32_t capacity() const { return capacity_; }
 
 private:
-  static uint64_t hash(const std::string & s) { return std::hash<std::string>{}(s); }
+  static uint64_t hash(const std::string & s)
+  {
+    const uint64_t h = std::hash<std::string>{}(s);
+    return h == 0 ? 1 : h;  // 0 is reserved for empty slots
+  }
 
   struct Slot
   {

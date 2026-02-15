@@ -28,6 +28,13 @@ namespace tfl
 class FrameTransformBuffer
 {
 public:
+  enum class GetDataResult : uint8_t
+  {
+    kNoData = 0,
+    kExactMatch = 1,
+    kInterpolate = 2,
+  };
+
   static constexpr uint32_t kDefaultCapacity = 2000;
 
   explicit FrameTransformBuffer(uint32_t capacity = kDefaultCapacity, bool is_static = false);
@@ -36,32 +43,30 @@ public:
 
   void insert(const TransformData & data, TimeNs cache_duration_ns);
 
-  // Returns: 0 = no data, 1 = exact match (in d1), 2 = interpolate (d1=older,
-  // d2=newer)
-  uint8_t get_data(TimeNs time, TransformData & d1, TransformData & d2) const
+  GetDataResult get_data(TimeNs time, TransformData & d1, TransformData & d2) const
   {
     for (int retry = 0; retry < kMaxSeqRetries; ++retry) {
-      uint64_t s1 = seq_.load(std::memory_order_acquire);
+      const uint64_t s1 = seq_.load(std::memory_order_acquire);
       if (s1 & 1) {
         continue;  // write in progress
       }
 
-      uint8_t result = get_data_unsafe(time, d1, d2);
+      const GetDataResult result = get_data_unsafe(time, d1, d2);
 
       std::atomic_thread_fence(std::memory_order_acquire);
-      uint64_t s2 = seq_.load(std::memory_order_acquire);
+      const uint64_t s2 = seq_.load(std::memory_order_acquire);
       if (s1 == s2) {
         return result;
       }
       // Sequence changed, retry
     }
-    return 0;  // give up after retries
+    return GetDataResult::kNoData;
   }
 
   TimeNs get_latest_stamp() const
   {
     for (int retry = 0; retry < kMaxSeqRetries; ++retry) {
-      uint64_t s1 = seq_.load(std::memory_order_acquire);
+      const uint64_t s1 = seq_.load(std::memory_order_acquire);
       if (s1 & 1) {
         continue;
       }
@@ -70,15 +75,15 @@ public:
       if (is_static_) {
         result = 0;  // static frames have no meaningful timestamp
       } else {
-        uint32_t sz = size_.load(std::memory_order_relaxed);
+        const uint32_t sz = size_.load(std::memory_order_relaxed);
         if (sz > 0) {
-          uint32_t h = head_.load(std::memory_order_relaxed);
+          const uint32_t h = head_.load(std::memory_order_relaxed);
           result = buf_[h].stamp_ns;
         }
       }
 
       std::atomic_thread_fence(std::memory_order_acquire);
-      uint64_t s2 = seq_.load(std::memory_order_acquire);
+      const uint64_t s2 = seq_.load(std::memory_order_acquire);
       if (s1 == s2) {
         return result;
       }
@@ -89,15 +94,15 @@ public:
   FrameID get_parent(TimeNs time) const
   {
     for (int retry = 0; retry < kMaxSeqRetries; ++retry) {
-      uint64_t s1 = seq_.load(std::memory_order_acquire);
+      const uint64_t s1 = seq_.load(std::memory_order_acquire);
       if (s1 & 1) {
         continue;
       }
 
-      FrameID result = get_parent_unsafe(time);
+      const FrameID result = get_parent_unsafe(time);
 
       std::atomic_thread_fence(std::memory_order_acquire);
-      uint64_t s2 = seq_.load(std::memory_order_acquire);
+      const uint64_t s2 = seq_.load(std::memory_order_acquire);
       if (s1 == s2) {
         return result;
       }
@@ -134,19 +139,19 @@ private:
     if (is_static_) {
       return buf_[0].parent_id;
     }
-    uint32_t sz = size_.load(std::memory_order_relaxed);
+    const uint32_t sz = size_.load(std::memory_order_relaxed);
     if (sz == 0) {
       return INVALID_FRAME;
     }
-    uint32_t h = head_.load(std::memory_order_relaxed);
+    const uint32_t h = head_.load(std::memory_order_relaxed);
     if (time == 0 || sz == 1) {
       return buf_[h].parent_id;
     }
     // For non-zero time with multiple entries, check range and return parent
     // (parent_id is same for all entries in a frame)
-    TimeNs newest = buf_[h].stamp_ns;
-    uint32_t oldest_idx = phys_idx(h, sz - 1);
-    TimeNs oldest = buf_[oldest_idx].stamp_ns;
+    const TimeNs newest = buf_[h].stamp_ns;
+    const uint32_t oldest_idx = phys_idx(h, sz - 1);
+    const TimeNs oldest = buf_[oldest_idx].stamp_ns;
     if (time > newest || time < oldest) {
       return INVALID_FRAME;
     }
@@ -154,61 +159,61 @@ private:
   }
 
   // Must be called inside SeqLock read section (no seq_ check)
-  uint8_t get_data_unsafe(TimeNs time, TransformData & d1, TransformData & d2) const
+  GetDataResult get_data_unsafe(TimeNs time, TransformData & d1, TransformData & d2) const
   {
     if (is_static_) {
       d1 = buf_[0];
       d1.stamp_ns = time;  // static cache overwrites timestamp (like tf2)
-      return 1;
+      return GetDataResult::kExactMatch;
     }
 
-    uint32_t sz = size_.load(std::memory_order_relaxed);
+    const uint32_t sz = size_.load(std::memory_order_relaxed);
     if (sz == 0) {
-      return 0;
+      return GetDataResult::kNoData;
     }
 
-    uint32_t h = head_.load(std::memory_order_relaxed);
+    const uint32_t h = head_.load(std::memory_order_relaxed);
 
     // time == 0 means "latest"
     if (time == 0) {
       d1 = buf_[h];
-      return 1;
+      return GetDataResult::kExactMatch;
     }
 
     // Single element
     if (sz == 1) {
       if (buf_[h].stamp_ns == time) {
         d1 = buf_[h];
-        return 1;
+        return GetDataResult::kExactMatch;
       }
-      return 0;  // extrapolation error
+      return GetDataResult::kNoData;  // extrapolation error
     }
 
-    TimeNs newest = buf_[h].stamp_ns;
-    uint32_t oldest_idx = phys_idx(h, sz - 1);
-    TimeNs oldest = buf_[oldest_idx].stamp_ns;
+    const TimeNs newest = buf_[h].stamp_ns;
+    const uint32_t oldest_idx = phys_idx(h, sz - 1);
+    const TimeNs oldest = buf_[oldest_idx].stamp_ns;
 
     // Exact match with newest
     if (time == newest) {
       d1 = buf_[h];
-      return 1;
+      return GetDataResult::kExactMatch;
     }
     // Exact match with oldest
     if (time == oldest) {
       d1 = buf_[oldest_idx];
-      return 1;
+      return GetDataResult::kExactMatch;
     }
 
     // Out of range
     if (time > newest || time < oldest) {
-      return 0;
+      return GetDataResult::kNoData;
     }
 
     // Binary search: find first logical index where stamp < time
     // Buffer is logically sorted descending: [newest ... oldest]
     uint32_t lo = 0, hi = sz - 1;
     while (lo < hi) {
-      uint32_t mid = (lo + hi) / 2;
+      const uint32_t mid = (lo + hi) / 2;
       if (buf_[phys_idx(h, mid)].stamp_ns > time) {
         lo = mid + 1;
       } else {
@@ -218,12 +223,12 @@ private:
     // lo = first index where stamp <= time
     if (buf_[phys_idx(h, lo)].stamp_ns == time) {
       d1 = buf_[phys_idx(h, lo)];
-      return 1;
+      return GetDataResult::kExactMatch;
     }
     // lo points to older, lo-1 points to newer
     d1 = buf_[phys_idx(h, lo)];      // older
     d2 = buf_[phys_idx(h, lo - 1)];  // newer
-    return 2;
+    return GetDataResult::kInterpolate;
   }
 
   // Sort the logical buffer window (called only on out-of-order insert)
