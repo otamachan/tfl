@@ -53,6 +53,16 @@ TransformData make_rotation_z(TimeNs stamp, double angle)
   return d;
 }
 
+// Rotation around Z axis + translation
+TransformData make_transform_z(TimeNs stamp, double angle, double x, double y, double z)
+{
+  TransformData d;
+  d.stamp_ns = stamp;
+  d.rotation = {0.0, 0.0, std::sin(angle / 2.0), std::cos(angle / 2.0)};
+  d.translation = {x, y, z};
+  return d;
+}
+
 }  // namespace
 
 TEST(TransformBuffer, AutoRegisterFrames)
@@ -177,14 +187,47 @@ TEST(TransformBuffer, RotationInterpolation)
   buf.set_transform("b", "a", make_rotation_z(1000, 0.0));
   buf.set_transform("b", "a", make_rotation_z(3000, pi / 2.0));
 
-  auto result = buf.lookup_transform("a", "b", 2000);
-  ASSERT_TRUE(result.has_value());
-  // Midpoint slerp → 45 deg around Z
-  const double expected_angle = pi / 4.0;
-  EXPECT_NEAR(result->rotation[0], 0.0, 1e-9);
-  EXPECT_NEAR(result->rotation[1], 0.0, 1e-9);
-  EXPECT_NEAR(result->rotation[2], std::sin(expected_angle / 2.0), 1e-9);
-  EXPECT_NEAR(result->rotation[3], std::cos(expected_angle / 2.0), 1e-9);
+  // nlerp helper: lerp + normalize
+  auto nlerp_z = [&](double t) -> std::array<double, 4> {
+    // q1 = (0,0,0,1), q2 = (0, 0, sin(pi/4), cos(pi/4))
+    double q2z = std::sin(pi / 4.0);
+    double q2w = std::cos(pi / 4.0);
+    double rz = t * q2z;
+    double rw = (1.0 - t) + t * q2w;
+    double norm = 1.0 / std::sqrt(rz * rz + rw * rw);
+    return {0.0, 0.0, rz * norm, rw * norm};
+  };
+
+  // t=0.5 (midpoint): nlerp == slerp exactly
+  {
+    auto result = buf.lookup_transform("a", "b", 2000);
+    ASSERT_TRUE(result.has_value());
+    auto expected = nlerp_z(0.5);
+    EXPECT_NEAR(result->rotation[2], expected[2], 1e-9);
+    EXPECT_NEAR(result->rotation[3], expected[3], 1e-9);
+  }
+
+  // t=0.25 (quarter): nlerp differs slightly from slerp
+  {
+    auto result = buf.lookup_transform("a", "b", 1500);
+    ASSERT_TRUE(result.has_value());
+    auto expected = nlerp_z(0.25);
+    EXPECT_NEAR(result->rotation[0], 0.0, 1e-9);
+    EXPECT_NEAR(result->rotation[1], 0.0, 1e-9);
+    EXPECT_NEAR(result->rotation[2], expected[2], 1e-9);
+    EXPECT_NEAR(result->rotation[3], expected[3], 1e-9);
+  }
+
+  // t=0.75 (three-quarter)
+  {
+    auto result = buf.lookup_transform("a", "b", 2500);
+    ASSERT_TRUE(result.has_value());
+    auto expected = nlerp_z(0.75);
+    EXPECT_NEAR(result->rotation[0], 0.0, 1e-9);
+    EXPECT_NEAR(result->rotation[1], 0.0, 1e-9);
+    EXPECT_NEAR(result->rotation[2], expected[2], 1e-9);
+    EXPECT_NEAR(result->rotation[3], expected[3], 1e-9);
+  }
 }
 
 TEST(TransformBuffer, StaticFrame)
@@ -282,4 +325,54 @@ TEST(TransformBuffer, LookupWithTimeoutDelayedInsert)
 
   ASSERT_TRUE(result.has_value());
   EXPECT_DOUBLE_EQ(result->translation[0], 3.0);
+}
+
+// source_parent_of_target with rotation + translation
+// Tree: b->a with 90deg Z rotation + (1,0,0) translation
+// inverse(rot=90degZ, trans=(1,0,0)):
+//   inv_rot = -90deg Z
+//   inv_trans = rot(-90degZ, -(1,0,0)) = rot(-90degZ, (-1,0,0)) = (0,1,0)
+TEST(TransformBuffer, SourceParentOfTargetWithRotation)
+{
+  const double pi = std::acos(-1.0);
+  TransformBuffer buf;
+  buf.set_transform("b", "a", make_transform_z(1000, pi / 2.0, 1.0, 0.0, 0.0));
+
+  auto result = buf.lookup_transform("b", "a", 1000);
+  ASSERT_TRUE(result.has_value());
+  // inverse rotation: -90 deg around Z
+  EXPECT_NEAR(result->rotation[0], 0.0, 1e-9);
+  EXPECT_NEAR(result->rotation[1], 0.0, 1e-9);
+  EXPECT_NEAR(result->rotation[2], std::sin(-pi / 4.0), 1e-9);
+  EXPECT_NEAR(result->rotation[3], std::cos(-pi / 4.0), 1e-9);
+  // inverse translation: (0, 1, 0)
+  EXPECT_NEAR(result->translation[0], 0.0, 1e-9);
+  EXPECT_NEAR(result->translation[1], 1.0, 1e-9);
+  EXPECT_NEAR(result->translation[2], 0.0, 1e-9);
+}
+
+// full_path with rotation + translation
+// Tree: b->a (90deg Z, (1,0,0)), c->a (identity, (0,2,0))
+// lookup(target="b", source="c"):
+//   source_to_top (c→a) = (identity, (0,2,0))
+//   target_to_top (b→a) = (90degZ, (1,0,0))
+//   inverse(target_to_top) = (-90degZ, (0,1,0))
+//   compose((-90degZ,(0,1,0)), (identity,(0,2,0))):
+//     rot = -90degZ, trans = rot(-90degZ,(0,2,0)) + (0,1,0) = (2,0,0) + (0,1,0) = (2,1,0)
+TEST(TransformBuffer, FullPathWithRotation)
+{
+  const double pi = std::acos(-1.0);
+  TransformBuffer buf;
+  buf.set_transform("b", "a", make_transform_z(1000, pi / 2.0, 1.0, 0.0, 0.0));
+  buf.set_transform("c", "a", make_translation(1000, 0.0, 2.0, 0.0));
+
+  auto result = buf.lookup_transform("b", "c", 1000);
+  ASSERT_TRUE(result.has_value());
+  // rotation: -90 deg around Z
+  EXPECT_NEAR(result->rotation[2], std::sin(-pi / 4.0), 1e-9);
+  EXPECT_NEAR(result->rotation[3], std::cos(-pi / 4.0), 1e-9);
+  // translation: (2, 1, 0)
+  EXPECT_NEAR(result->translation[0], 2.0, 1e-9);
+  EXPECT_NEAR(result->translation[1], 1.0, 1e-9);
+  EXPECT_NEAR(result->translation[2], 0.0, 1e-9);
 }

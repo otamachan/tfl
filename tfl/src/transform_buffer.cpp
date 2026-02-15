@@ -22,18 +22,11 @@
 namespace tfl
 {
 
-constexpr double kSlerpThreshold = 1e-6;
-
 namespace
 {
 
 using Quat = TransformData::Quat;
 using Vec3 = TransformData::Vec3;
-
-double quat_dot(const Quat & a, const Quat & b)
-{
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
-}
 
 void quat_multiply(const Quat & a, const Quat & b, Quat & out)
 {
@@ -61,29 +54,21 @@ void quat_rotate(const Quat & q, const Vec3 & v, Vec3 & out)
   out[2] = v[2] + q[3] * tz + (q[0] * ty - q[1] * tx);
 }
 
-void slerp(const Quat & q1, const Quat & q2, double t, Quat & out)
+// Normalized linear interpolation (nlerp): lerp + normalize.
+// No trig needed; constant speed not required for adjacent samples.
+void nlerp(const Quat & q1, const Quat & q2, double t, Quat & out)
 {
-  double d = quat_dot(q1, q2);
-  Quat q2a = q2;
-  if (d < 0.0) {
-    d = -d;
-    q2a[0] = -q2[0];
-    q2a[1] = -q2[1];
-    q2a[2] = -q2[2];
-    q2a[3] = -q2[3];
-  }
-  if (d > 1.0 - kSlerpThreshold) {
-    for (int i = 0; i < 4; ++i) {
-      out[i] = q1[i] + t * (q2a[i] - q1[i]);
-    }
-    return;
-  }
-  const double theta = std::acos(d);
-  const double sin_theta = std::sin(theta);
-  const double ra = std::sin((1.0 - t) * theta) / sin_theta;
-  const double rb = std::sin(t * theta) / sin_theta;
+  double d = q1[0] * q2[0] + q1[1] * q2[1] + q1[2] * q2[2] + q1[3] * q2[3];
+  const double sign = (d < 0.0) ? -1.0 : 1.0;
+  const double t1 = 1.0 - t;
+  const double t2 = t * sign;
   for (int i = 0; i < 4; ++i) {
-    out[i] = ra * q1[i] + rb * q2a[i];
+    out[i] = t1 * q1[i] + t2 * q2[i];
+  }
+  const double norm =
+    1.0 / std::sqrt(out[0] * out[0] + out[1] * out[1] + out[2] * out[2] + out[3] * out[3]);
+  for (int i = 0; i < 4; ++i) {
+    out[i] *= norm;
   }
 }
 
@@ -106,6 +91,27 @@ void neg3(const Vec3 & a, Vec3 & out)
   for (int i = 0; i < 3; ++i) {
     out[i] = -a[i];
   }
+}
+
+// result = parent * child  (apply child, then parent)
+TransformData compose(const TransformData & parent, const TransformData & child)
+{
+  TransformData result;
+  Vec3 rotated;
+  quat_rotate(parent.rotation, child.translation, rotated);
+  add3(rotated, parent.translation, result.translation);
+  quat_multiply(parent.rotation, child.rotation, result.rotation);
+  return result;
+}
+
+TransformData inverse(const TransformData & t)
+{
+  TransformData result;
+  quat_inverse(t.rotation, result.rotation);
+  Vec3 neg_v;
+  neg3(t.translation, neg_v);
+  quat_rotate(result.rotation, neg_v, result.translation);
+  return result;
 }
 
 }  // anonymous namespace
@@ -168,79 +174,12 @@ void TransformBuffer::clear()
   }
 }
 
-void TransformBuffer::TransformAccum::accum_source(const TransformData & st)
-{
-  Vec3 rotated;
-  quat_rotate(st.rotation, source_to_top_vec, rotated);
-  add3(rotated, st.translation, source_to_top_vec);
-  Quat tmp;
-  quat_multiply(st.rotation, source_to_top_quat, tmp);
-  source_to_top_quat = tmp;
-}
-
-void TransformBuffer::TransformAccum::accum_target(const TransformData & st)
-{
-  Vec3 rotated;
-  quat_rotate(st.rotation, target_to_top_vec, rotated);
-  add3(rotated, st.translation, target_to_top_vec);
-  Quat tmp;
-  quat_multiply(st.rotation, target_to_top_quat, tmp);
-  target_to_top_quat = tmp;
-}
-
-TransformData TransformBuffer::TransformAccum::finalize_identity() const
-{
-  TransformData result;
-  result.stamp_ns = time;
-  return result;
-}
-
-TransformData TransformBuffer::TransformAccum::finalize_target_parent_of_source() const
-{
-  TransformData result;
-  result.stamp_ns = time;
-  result.rotation = source_to_top_quat;
-  result.translation = source_to_top_vec;
-  return result;
-}
-
-TransformData TransformBuffer::TransformAccum::finalize_source_parent_of_target() const
-{
-  TransformData result;
-  result.stamp_ns = time;
-  Quat inv_q;
-  quat_inverse(target_to_top_quat, inv_q);
-  Vec3 neg_v;
-  neg3(target_to_top_vec, neg_v);
-  quat_rotate(inv_q, neg_v, result.translation);
-  result.rotation = inv_q;
-  return result;
-}
-
-TransformData TransformBuffer::TransformAccum::finalize_full_path() const
-{
-  TransformData result;
-  result.stamp_ns = time;
-  Quat inv_q;
-  quat_inverse(target_to_top_quat, inv_q);
-  Vec3 neg_v;
-  neg3(target_to_top_vec, neg_v);
-  Vec3 inv_v;
-  quat_rotate(inv_q, neg_v, inv_v);
-
-  quat_multiply(inv_q, source_to_top_quat, result.rotation);
-  Vec3 rotated_src;
-  quat_rotate(inv_q, source_to_top_vec, rotated_src);
-  add3(rotated_src, inv_v, result.translation);
-  return result;
-}
-
 static void interpolate(
   const TransformData & d1, const TransformData & d2, TimeNs time, TransformData & out)
 {
   const double range = static_cast<double>(d2.stamp_ns - d1.stamp_ns);
   const double t = (range > 0.0) ? static_cast<double>(time - d1.stamp_ns) / range : 0.0;
-  slerp(d1.rotation, d2.rotation, t, out.rotation);
+  nlerp(d1.rotation, d2.rotation, t, out.rotation);
   lerp3(d1.translation, d2.translation, t, out.translation);
   out.stamp_ns = time;
   out.parent_id = d1.parent_id;
@@ -266,11 +205,10 @@ static bool get_frame_data(const FrameTransformBuffer & cache, TimeNs time, Tran
 std::optional<TransformData> TransformBuffer::walk_to_top_parent(
   FrameID target_id, FrameID source_id, TimeNs time) const
 {
-  TransformAccum accum;
-
   if (source_id == target_id) {
-    accum.time = time;
-    return accum.finalize_identity();
+    TransformData identity;
+    identity.stamp_ns = time;
+    return identity;
   }
 
   if (time == 0) {
@@ -279,9 +217,9 @@ std::optional<TransformData> TransformBuffer::walk_to_top_parent(
       return std::nullopt;
     }
   }
-  accum.time = time;
 
-  // Phase 1: walk source chain up to root
+  // Phase 1: walk source chain up to root, accumulate source_to_top
+  TransformData source_to_top;  // identity by default
   FrameID frame = source_id;
   FrameID top_parent = INVALID_FRAME;
   uint32_t depth = 0;
@@ -292,7 +230,8 @@ std::optional<TransformData> TransformBuffer::walk_to_top_parent(
     }
 
     if (frame == target_id) {
-      return accum.finalize_target_parent_of_source();
+      source_to_top.stamp_ns = time;
+      return source_to_top;
     }
 
     TransformData st;
@@ -302,21 +241,23 @@ std::optional<TransformData> TransformBuffer::walk_to_top_parent(
       break;
     }
 
-    accum.accum_source(st);
+    source_to_top = compose(st, source_to_top);
 
     top_parent = frame;
     frame = st.parent_id;
     depth++;
 
     if (frame == target_id) {
-      return accum.finalize_target_parent_of_source();
+      source_to_top.stamp_ns = time;
+      return source_to_top;
     }
   }
   if (depth >= MAX_GRAPH_DEPTH) {
     return std::nullopt;
   }
 
-  // Phase 2: walk target chain up to find meeting point
+  // Phase 2: walk target chain up to top_parent, accumulate target_to_top
+  TransformData target_to_top;  // identity by default
   frame = target_id;
   depth = 0;
 
@@ -325,21 +266,19 @@ std::optional<TransformData> TransformBuffer::walk_to_top_parent(
       return std::nullopt;
     }
 
-    if (frame == source_id) {
-      return accum.finalize_source_parent_of_target();
-    }
-
     TransformData st;
     if (!get_frame_data(frames_[frame], time, st)) {
       return std::nullopt;
     }
 
-    accum.accum_target(st);
+    target_to_top = compose(st, target_to_top);
     frame = st.parent_id;
     depth++;
 
     if (frame == source_id) {
-      return accum.finalize_source_parent_of_target();
+      auto result = inverse(target_to_top);
+      result.stamp_ns = time;
+      return result;
     }
   }
 
@@ -347,7 +286,10 @@ std::optional<TransformData> TransformBuffer::walk_to_top_parent(
     return std::nullopt;
   }
 
-  return accum.finalize_full_path();
+  // Full path: target_to_top⁻¹ * source_to_top
+  auto result = compose(inverse(target_to_top), source_to_top);
+  result.stamp_ns = time;
+  return result;
 }
 
 std::optional<TransformData> TransformBuffer::lookup_transform(
