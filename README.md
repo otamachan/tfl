@@ -1,5 +1,10 @@
 # tfl (tf light)
 
+[![ROS 2](https://img.shields.io/badge/ROS_2-Jazzy%20%7C%20Rolling-blue.svg)](https://docs.ros.org/)
+[![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://isocpp.org/)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![CI](https://github.com/otamachan/tfl/actions/workflows/ci.yml/badge.svg)](https://github.com/otamachan/tfl/actions/workflows/ci.yml)
+
 Mutex-free tf2 alternative for ROS 2. An experimental rewrite of tf2's `BufferCore` that eliminates all mutexes.
 
 ## Motivation
