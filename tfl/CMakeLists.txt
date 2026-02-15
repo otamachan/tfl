@@ -43,6 +43,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_buffer test/test_buffer.cpp)
   target_link_libraries(test_buffer ${PROJECT_NAME})
+
+  ament_add_gtest(test_stress test/test_stress.cpp TIMEOUT 30)
+  target_link_libraries(test_stress ${PROJECT_NAME})
 endif()
 
 ament_package()
